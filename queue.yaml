@@ -1,0 +1,16 @@
+# Cloud Tasks queues for async processing
+queue:
+- name: form-processing
+  rate: 5/s
+  retry_parameters:
+    task_retry_limit: 3
+    min_backoff_seconds: 10
+    max_backoff_seconds: 300
+    max_doublings: 5
+
+- name: document-processing
+  rate: 2/s
+  retry_parameters:
+    task_retry_limit: 2
+    min_backoff_seconds: 30
+    max_backoff_seconds: 600

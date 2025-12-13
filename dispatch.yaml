@@ -1,0 +1,9 @@
+# App Engine routing rules
+dispatch:
+  # Send all API traffic to backend service
+  - url: "*/api/*"
+    service: api
+
+  # Everything else goes to frontend (default service)
+  - url: "*/*"
+    service: default

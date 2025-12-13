@@ -1,0 +1,26 @@
+runtime: nodejs20
+service: default
+instance_class: F1
+
+env_variables:
+  REACT_APP_API_URL: "https://api-dot-PROJECT_ID.uc.r.appspot.com/api"
+
+handlers:
+- url: /static
+  static_dir: build/static
+  secure: always
+
+- url: /(.*\.(json|ico|js|txt|png|jpg|svg|css|woff|woff2))$
+  static_files: build/\1
+  upload: build/.*\.(json|ico|js|txt|png|jpg|svg|css|woff|woff2)$
+  secure: always
+
+- url: /.*
+  static_files: build/index.html
+  upload: build/index.html
+  secure: always
+
+automatic_scaling:
+  min_instances: 0
+  max_instances: 10
+  target_cpu_utilization: 0.65

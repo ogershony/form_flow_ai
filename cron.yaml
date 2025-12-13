@@ -1,0 +1,13 @@
+# Cloud Scheduler cron jobs
+cron:
+- description: "Clean up old temporary files"
+  url: /api/internal/cleanup
+  schedule: every day 02:00
+  timezone: America/Los_Angeles
+  target: api
+
+- description: "Generate daily stats"
+  url: /api/internal/stats
+  schedule: every day 06:00
+  timezone: America/Los_Angeles
+  target: api

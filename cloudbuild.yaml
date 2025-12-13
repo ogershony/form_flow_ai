@@ -1,0 +1,59 @@
+# Cloud Build configuration for CI/CD
+steps:
+  # Install and test backend
+  - name: 'python:3.12'
+    entrypoint: pip
+    args: ['install', '-r', 'backend/requirements.txt', '-t', 'backend/lib']
+
+  - name: 'python:3.12'
+    dir: 'backend'
+    entrypoint: python
+    args: ['-m', 'pytest', 'tests/', '-v', '--tb=short']
+    env:
+      - 'FLASK_ENV=testing'
+
+  # Install and build frontend
+  - name: 'node:20'
+    dir: 'frontend'
+    entrypoint: npm
+    args: ['install']
+
+  - name: 'node:20'
+    dir: 'frontend'
+    entrypoint: npm
+    args: ['run', 'build']
+    env:
+      - 'CI=true'
+      - 'REACT_APP_API_URL=https://api-dot-${PROJECT_ID}.uc.r.appspot.com/api'
+
+  # Deploy backend service
+  - name: 'gcr.io/cloud-builders/gcloud'
+    args:
+      - 'app'
+      - 'deploy'
+      - 'backend/app.yaml'
+      - '--quiet'
+      - '--project=${PROJECT_ID}'
+
+  # Deploy frontend service
+  - name: 'gcr.io/cloud-builders/gcloud'
+    args:
+      - 'app'
+      - 'deploy'
+      - 'frontend/app.yaml'
+      - '--quiet'
+      - '--project=${PROJECT_ID}'
+
+  # Deploy dispatch rules
+  - name: 'gcr.io/cloud-builders/gcloud'
+    args:
+      - 'app'
+      - 'deploy'
+      - 'dispatch.yaml'
+      - '--quiet'
+      - '--project=${PROJECT_ID}'
+
+timeout: 1800s
+
+options:
+  logging: CLOUD_LOGGING_ONLY
