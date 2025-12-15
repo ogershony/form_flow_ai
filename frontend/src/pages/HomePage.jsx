@@ -234,29 +234,6 @@ function HomePage() {
             )}
           </button>
         </form>
-
-        {/* Tips */}
-        <div className="mt-12 bg-white rounded-lg shadow-sm p-6">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">Tips for better forms</h3>
-          <ul className="space-y-2 text-sm text-gray-600">
-            <li className="flex items-start">
-              <span className="text-primary-500 mr-2">1.</span>
-              Be specific about the type of questions you want (multiple choice, short answer)
-            </li>
-            <li className="flex items-start">
-              <span className="text-primary-500 mr-2">2.</span>
-              Mention if certain questions should be required
-            </li>
-            <li className="flex items-start">
-              <span className="text-primary-500 mr-2">3.</span>
-              Upload existing forms or documents to extract questions from them
-            </li>
-            <li className="flex items-start">
-              <span className="text-primary-500 mr-2">4.</span>
-              Include the purpose or audience for better question suggestions
-            </li>
-          </ul>
-        </div>
       </main>
     </div>
   );

@@ -10,6 +10,7 @@ from app.services.firebase_service import (
     create_form as db_create_form,
     update_form as db_update_form,
     undo_form as db_undo_form,
+    delete_form as db_delete_form,
     get_user_forms,
     add_form_response,
     get_form_responses,
@@ -185,7 +186,6 @@ def save_form(form_id):
 @forms_bp.route("/<form_id>/edit", methods=["POST"])
 @require_auth
 @require_form_owner
-@limiter.limit("20 per hour")
 def edit_form(form_id):
     """
     AI-assisted form editing with natural language.
@@ -366,3 +366,26 @@ def get_responses(form_id):
     except Exception as e:
         logger.error(f"Failed to get responses: {e}")
         return {"error": "Failed to get responses"}, 500
+
+
+@forms_bp.route("/<form_id>", methods=["DELETE"])
+@require_auth
+@require_form_owner
+def delete_form(form_id):
+    """
+    Delete a form (owner only).
+
+    Returns:
+        Success status
+    """
+    try:
+        db_delete_form(form_id, g.user_id)
+
+        return {
+            "success": True,
+            "message": "Form deleted successfully"
+        }, 200
+
+    except Exception as e:
+        logger.error(f"Failed to delete form {form_id}: {e}")
+        return {"error": "Failed to delete form"}, 500

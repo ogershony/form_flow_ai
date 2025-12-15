@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getForm, getFormResponses } from '../services/api';
+import { FormComponentFactory } from '../components/FormComponents';
 
 function ResponsesView() {
   const { formId } = useParams();
@@ -8,6 +9,8 @@ function ResponsesView() {
   const [responses, setResponses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [jumpToInput, setJumpToInput] = useState('');
 
   // Load form and responses
   useEffect(() => {
@@ -18,7 +21,9 @@ function ResponsesView() {
           getFormResponses(formId),
         ]);
         setForm(formData);
-        setResponses(responsesData.responses || []);
+        const sortedResponses = (responsesData.responses || []).reverse(); // Most recent first
+        setResponses(sortedResponses);
+        setCurrentIndex(0); // Start with most recent
       } catch (err) {
         setError(err.message || 'Failed to load responses');
       } finally {
@@ -29,13 +34,29 @@ function ResponsesView() {
     loadData();
   }, [formId]);
 
-  // Get question text by component ID
-  const getQuestionText = (componentId) => {
-    const component = form?.schema?.components?.find((c) => c.id === componentId);
-    return component?.data?.question || componentId;
+  // Navigation functions
+  const goToPrevious = () => {
+    if (currentIndex > 0) {
+      setCurrentIndex(currentIndex - 1);
+    }
   };
 
-  // Format answer for display
+  const goToNext = () => {
+    if (currentIndex < responses.length - 1) {
+      setCurrentIndex(currentIndex + 1);
+    }
+  };
+
+  const handleJumpTo = (e) => {
+    e.preventDefault();
+    const index = parseInt(jumpToInput) - 1; // Convert 1-based to 0-based
+    if (index >= 0 && index < responses.length) {
+      setCurrentIndex(index);
+      setJumpToInput('');
+    }
+  };
+
+  // Format answer for display (for CSV export)
   const formatAnswer = (answer) => {
     if (Array.isArray(answer)) {
       return answer.join(', ');
@@ -48,11 +69,11 @@ function ResponsesView() {
     if (!responses.length || !form?.schema?.components) return;
 
     const components = form.schema.components;
-    const headers = ['Response ID', 'Submitted At', ...components.map((c) => c.data?.question || c.id)];
+    const headers = ['Response #', 'Submitted At', ...components.map((c) => c.data?.question || c.id)];
 
-    const rows = responses.map((response) => {
+    const rows = responses.map((response, index) => {
       const row = [
-        response.responseId,
+        responses.length - index, // Show as 1-based index
         new Date(response.submittedAt).toLocaleString(),
         ...components.map((c) => formatAnswer(response.answers?.[c.id])),
       ];
@@ -68,6 +89,8 @@ function ResponsesView() {
     a.click();
     URL.revokeObjectURL(url);
   };
+
+  const currentResponse = responses[currentIndex];
 
   // Loading state
   if (loading) {
@@ -134,62 +157,102 @@ function ResponsesView() {
               </p>
             </div>
             <div>
-              <p className="text-sm text-gray-500">Last Response</p>
+              <p className="text-sm text-gray-500">Most Recent Response</p>
               <p className="text-lg font-medium text-gray-900">
                 {responses.length > 0
-                  ? new Date(responses[responses.length - 1].submittedAt).toLocaleDateString()
+                  ? new Date(responses[0].submittedAt).toLocaleDateString()
                   : 'No responses yet'}
               </p>
             </div>
           </div>
         </div>
 
-        {/* Responses table */}
+        {/* Response Navigation and Viewer */}
         {responses.length > 0 ? (
-          <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      #
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Submitted
-                    </th>
-                    {form?.schema?.components?.map((component) => (
-                      <th
-                        key={component.id}
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider max-w-xs truncate"
-                      >
-                        {component.data?.question || component.id}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {responses.map((response, index) => (
-                    <tr key={response.responseId} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {index + 1}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {new Date(response.submittedAt).toLocaleString()}
-                      </td>
-                      {form?.schema?.components?.map((component) => (
-                        <td
-                          key={component.id}
-                          className="px-6 py-4 text-sm text-gray-900 max-w-xs truncate"
-                        >
-                          {formatAnswer(response.answers?.[component.id])}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          <>
+            {/* Navigation Controls */}
+            <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={goToPrevious}
+                  disabled={currentIndex === 0}
+                  className="p-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  aria-label="Previous response"
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+
+                <div className="flex items-center space-x-4">
+                  <span className="text-sm font-medium text-gray-900">
+                    Response {currentIndex + 1} of {responses.length}
+                  </span>
+
+                  <form onSubmit={handleJumpTo} className="flex items-center space-x-2">
+                    <label htmlFor="jump-to" className="text-sm text-gray-600">
+                      Jump to:
+                    </label>
+                    <input
+                      id="jump-to"
+                      type="number"
+                      min="1"
+                      max={responses.length}
+                      value={jumpToInput}
+                      onChange={(e) => setJumpToInput(e.target.value)}
+                      placeholder="#"
+                      className="w-16 px-2 py-1 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    />
+                    <button
+                      type="submit"
+                      className="px-3 py-1 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700"
+                    >
+                      Go
+                    </button>
+                  </form>
+
+                  <span className="text-xs text-gray-500">
+                    Submitted: {new Date(currentResponse.submittedAt).toLocaleString()}
+                  </span>
+                </div>
+
+                <button
+                  onClick={goToNext}
+                  disabled={currentIndex === responses.length - 1}
+                  className="p-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  aria-label="Next response"
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </div>
             </div>
-          </div>
+
+            {/* Response Viewer - Form-like Display */}
+            <div className="bg-white rounded-lg shadow-sm p-6">
+              <div className="mb-6">
+                <h2 className="text-xl font-semibold text-gray-900">
+                  {form?.title || 'Untitled Form'}
+                </h2>
+                {form?.description && (
+                  <p className="mt-2 text-gray-600">{form.description}</p>
+                )}
+              </div>
+
+              <div className="space-y-6">
+                {form?.schema?.components?.map((component) => (
+                  <FormComponentFactory
+                    key={component.id}
+                    component={component}
+                    value={currentResponse.answers?.[component.id] || ''}
+                    onChange={() => {}} // No-op since it's disabled
+                    disabled={true}
+                  />
+                ))}
+              </div>
+            </div>
+          </>
         ) : (
           <div className="bg-white rounded-lg shadow-sm p-12 text-center">
             <svg
@@ -220,36 +283,6 @@ function ResponsesView() {
                 Copy Share Link
               </button>
             </div>
-          </div>
-        )}
-
-        {/* Individual response cards for small screens */}
-        {responses.length > 0 && (
-          <div className="mt-6 lg:hidden space-y-4">
-            {responses.map((response, index) => (
-              <div key={response.responseId} className="bg-white rounded-lg shadow-sm p-4">
-                <div className="flex justify-between items-center mb-4">
-                  <span className="text-sm font-medium text-gray-900">
-                    Response #{index + 1}
-                  </span>
-                  <span className="text-sm text-gray-500">
-                    {new Date(response.submittedAt).toLocaleString()}
-                  </span>
-                </div>
-                <div className="space-y-3">
-                  {form?.schema?.components?.map((component) => (
-                    <div key={component.id}>
-                      <p className="text-xs text-gray-500">
-                        {component.data?.question || component.id}
-                      </p>
-                      <p className="text-sm text-gray-900">
-                        {formatAnswer(response.answers?.[component.id])}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
           </div>
         )}
       </main>

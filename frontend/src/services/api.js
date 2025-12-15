@@ -101,6 +101,11 @@ export const getFormResponses = async (formId) => {
   return response.data;
 };
 
+export const deleteForm = async (formId) => {
+  const response = await api.delete(`/forms/${formId}`);
+  return response.data;
+};
+
 // Auth
 export const verifyAuth = async () => {
   const response = await api.post('/auth/verify');

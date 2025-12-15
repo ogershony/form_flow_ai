@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useDropzone } from 'react-dropzone';
 import { FormComponentFactory } from '../components/FormComponents';
-import { getForm, editForm, saveForm, undoForm } from '../services/api';
+import { getForm, editForm, saveForm, undoForm, deleteForm } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
 function FormEditor() {
@@ -159,6 +159,24 @@ function FormEditor() {
     setSuccess('Share link copied to clipboard');
   };
 
+  // Handle delete
+  const handleDelete = async () => {
+    if (!window.confirm('Are you sure you want to delete this form? This action cannot be undone.')) {
+      return;
+    }
+
+    setError('');
+    setSaving(true);
+
+    try {
+      await deleteForm(formId);
+      navigate('/');
+    } catch (err) {
+      setError(err.message || 'Failed to delete form');
+      setSaving(false);
+    }
+  };
+
   // Loading state
   if (loading) {
     return (
@@ -184,6 +202,13 @@ function FormEditor() {
               </h1>
             </div>
             <div className="flex items-center space-x-3">
+              <button
+                onClick={handleDelete}
+                disabled={saving}
+                className="px-3 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50"
+              >
+                Delete
+              </button>
               <button
                 onClick={handleUndo}
                 disabled={saving}
@@ -355,31 +380,6 @@ function FormEditor() {
                   )}
                 </button>
               </form>
-
-              {/* Quick actions */}
-              <div className="mt-6 pt-6 border-t border-gray-200">
-                <h4 className="text-sm font-medium text-gray-700 mb-3">Quick actions</h4>
-                <div className="space-y-2">
-                  <button
-                    onClick={() => setQuery('Add a question asking for email address')}
-                    className="w-full text-left px-3 py-2 text-sm text-gray-600 bg-gray-50 rounded hover:bg-gray-100"
-                  >
-                    + Add email question
-                  </button>
-                  <button
-                    onClick={() => setQuery('Add a multiple choice question about satisfaction (Very Satisfied, Satisfied, Neutral, Dissatisfied)')}
-                    className="w-full text-left px-3 py-2 text-sm text-gray-600 bg-gray-50 rounded hover:bg-gray-100"
-                  >
-                    + Add satisfaction rating
-                  </button>
-                  <button
-                    onClick={() => setQuery('Make all questions required')}
-                    className="w-full text-left px-3 py-2 text-sm text-gray-600 bg-gray-50 rounded hover:bg-gray-100"
-                  >
-                    Make all required
-                  </button>
-                </div>
-              </div>
             </div>
           </div>
         </div>
