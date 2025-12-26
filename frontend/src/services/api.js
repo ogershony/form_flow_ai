@@ -76,8 +76,11 @@ export const listForms = async () => {
   return response.data;
 };
 
-export const saveForm = async (formId, schema, changeDescription = '') => {
-  const response = await api.post(`/forms/${formId}/save`, { schema, changeDescription });
+export const saveForm = async (formId, schema, changeDescription = '', title = null, description = null) => {
+  const payload = { schema, changeDescription };
+  if (title !== null) payload.title = title;
+  if (description !== null) payload.description = description;
+  const response = await api.post(`/forms/${formId}/save`, payload);
   return response.data;
 };
 

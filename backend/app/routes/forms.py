@@ -145,11 +145,13 @@ def get_form_detail(form_id):
 @require_form_owner
 def save_form(form_id):
     """
-    Manually save form schema changes.
+    Manually save form schema changes and metadata.
 
     Request Body:
         schema: Updated form schema
-        changeDescription: Optional description
+        title: Optional form title
+        description: Optional form description
+        changeDescription: Optional description of changes
 
     Returns:
         Success status and new version
@@ -160,6 +162,8 @@ def save_form(form_id):
         return {"error": "Request body required"}, 400
 
     schema = data.get("schema")
+    title = data.get("title")
+    description = data.get("description")
     change_description = data.get("changeDescription", "Manual save")
 
     if not schema:
@@ -171,7 +175,13 @@ def save_form(form_id):
         return {"error": error}, 400
 
     try:
-        new_version = db_update_form(form_id, schema, change_description)
+        new_version = db_update_form(
+            form_id,
+            schema,
+            change_description,
+            title=title,
+            description=description
+        )
 
         return {
             "success": True,
@@ -248,11 +258,22 @@ def edit_form(form_id):
             schema_data
         )
 
+        # Generate detailed diff
+        detailed_diff = mcp_service.generate_detailed_diff(
+            current_schema,
+            schema_data
+        )
+
         # Build new schema
         new_schema = {"components": schema_data.get("components", [])}
 
         # Update in database
-        new_version = db_update_form(form_id, new_schema, change_description)
+        new_version = db_update_form(
+            form_id,
+            new_schema,
+            change_description,
+            detailed_diff=detailed_diff
+        )
 
         logger.info(f"Updated form {form_id} to version {new_version}")
 
@@ -261,7 +282,8 @@ def edit_form(form_id):
             "schema": new_schema,
             "title": schema_data.get("title", g.form.get("title", "")),
             "description": schema_data.get("description", g.form.get("description", "")),
-            "version": new_version
+            "version": new_version,
+            "diff": detailed_diff
         }, 200
 
     except Exception as e:

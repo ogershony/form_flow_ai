@@ -23,6 +23,10 @@ dist/
 .env.production
 .env.production.local
 
+# YAML files
+app.yaml
+service-credentials.json
+
 # IDE
 .idea/
 .vscode/

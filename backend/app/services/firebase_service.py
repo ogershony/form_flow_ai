@@ -215,15 +215,21 @@ def create_form(
 def update_form(
     form_id: str,
     schema: Dict[str, Any],
-    change_description: str = ""
+    change_description: str = "",
+    title: Optional[str] = None,
+    description: Optional[str] = None,
+    detailed_diff: Optional[Dict[str, Any]] = None
 ) -> int:
     """
-    Update form with a new schema version.
+    Update form with a new schema version and optionally update metadata.
 
     Args:
         form_id: Form document ID
         schema: New schema
         change_description: Description of changes
+        title: Optional new title
+        description: Optional new description
+        detailed_diff: Optional structured diff data
 
     Returns:
         New version number
@@ -248,11 +254,23 @@ def update_form(
             "changeDescription": change_description
         }
 
-        form_ref.update({
+        # Add detailed diff if provided
+        if detailed_diff is not None:
+            new_state["detailedDiff"] = detailed_diff
+
+        update_data = {
             "currentVersion": new_version,
             "updatedAt": now,
             "states": firestore.ArrayUnion([new_state])
-        })
+        }
+
+        # Update title and description if provided
+        if title is not None:
+            update_data["title"] = title
+        if description is not None:
+            update_data["description"] = description
+
+        form_ref.update(update_data)
 
         logger.info(f"Updated form {form_id} to version {new_version}")
         return new_version

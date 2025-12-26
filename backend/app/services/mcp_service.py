@@ -348,6 +348,165 @@ class MCPService:
 
         return "; ".join(changes) if changes else "No changes detected"
 
+    def generate_detailed_diff(
+        self,
+        old_schema: Dict[str, Any],
+        new_schema: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Generate detailed structured diff between schemas.
+
+        Args:
+            old_schema: Previous schema
+            new_schema: New schema
+
+        Returns:
+            Structured diff with detailed change information
+        """
+        old_components = {c["id"]: c for c in old_schema.get("components", [])}
+        new_components = {c["id"]: c for c in new_schema.get("components", [])}
+
+        changes = []
+
+        # Track added components
+        added_ids = set(new_components.keys()) - set(old_components.keys())
+        for comp_id in added_ids:
+            component = new_components[comp_id]
+            question = component.get("data", {}).get("question", "")
+            comp_type = component.get("type", "")
+            type_name = "multiple choice" if comp_type == "multiple-choice" else "short answer"
+
+            changes.append({
+                "type": "added",
+                "componentId": comp_id,
+                "component": component,
+                "details": f"Added {type_name} question: '{question}'"
+            })
+
+        # Track removed components
+        removed_ids = set(old_components.keys()) - set(new_components.keys())
+        for comp_id in removed_ids:
+            component = old_components[comp_id]
+            question = component.get("data", {}).get("question", "")
+            comp_type = component.get("type", "")
+            type_name = "multiple choice" if comp_type == "multiple-choice" else "short answer"
+
+            changes.append({
+                "type": "removed",
+                "componentId": comp_id,
+                "component": component,
+                "details": f"Removed {type_name} question: '{question}'"
+            })
+
+        # Track modified components
+        common_ids = set(old_components.keys()) & set(new_components.keys())
+        for comp_id in common_ids:
+            old_comp = old_components[comp_id]
+            new_comp = new_components[comp_id]
+
+            if old_comp != new_comp:
+                details_parts = self._compare_components(old_comp, new_comp)
+                if details_parts:
+                    changes.append({
+                        "type": "modified",
+                        "componentId": comp_id,
+                        "before": old_comp,
+                        "after": new_comp,
+                        "details": "; ".join(details_parts)
+                    })
+
+        # Track metadata changes
+        if old_schema.get("title") != new_schema.get("title"):
+            changes.append({
+                "type": "metadata",
+                "field": "title",
+                "before": old_schema.get("title", ""),
+                "after": new_schema.get("title", ""),
+                "details": f"Changed form title from '{old_schema.get('title', '')}' to '{new_schema.get('title', '')}'"
+            })
+
+        if old_schema.get("description") != new_schema.get("description"):
+            changes.append({
+                "type": "metadata",
+                "field": "description",
+                "before": old_schema.get("description", ""),
+                "after": new_schema.get("description", ""),
+                "details": f"Changed form description"
+            })
+
+        # Generate summary using existing method
+        summary = self.generate_change_description(old_schema, new_schema)
+
+        return {
+            "summary": summary,
+            "changes": changes
+        }
+
+    def _compare_components(
+        self,
+        old_comp: Dict[str, Any],
+        new_comp: Dict[str, Any]
+    ) -> list:
+        """
+        Compare two components and return list of changes.
+
+        Args:
+            old_comp: Old component
+            new_comp: New component
+
+        Returns:
+            List of change descriptions
+        """
+        changes = []
+        old_data = old_comp.get("data", {})
+        new_data = new_comp.get("data", {})
+
+        # Check type change (rare but possible)
+        if old_comp.get("type") != new_comp.get("type"):
+            old_type = "multiple choice" if old_comp.get("type") == "multiple-choice" else "short answer"
+            new_type = "multiple choice" if new_comp.get("type") == "multiple-choice" else "short answer"
+            changes.append(f"Changed type from {old_type} to {new_type}")
+
+        # Check question text change
+        old_question = old_data.get("question", "")
+        new_question = new_data.get("question", "")
+        if old_question != new_question:
+            changes.append(f"Changed question text")
+
+        # Check required status
+        old_required = old_data.get("required", False)
+        new_required = new_data.get("required", False)
+        if old_required != new_required:
+            status = "required" if new_required else "optional"
+            changes.append(f"Made {status}")
+
+        # Multiple choice specific changes
+        if new_comp.get("type") == "multiple-choice":
+            old_opts = set(old_data.get("options", []))
+            new_opts = set(new_data.get("options", []))
+
+            added_opts = new_opts - old_opts
+            removed_opts = old_opts - new_opts
+
+            if added_opts:
+                opts_str = "', '".join(added_opts)
+                changes.append(f"Added option(s): '{opts_str}'")
+            if removed_opts:
+                opts_str = "', '".join(removed_opts)
+                changes.append(f"Removed option(s): '{opts_str}'")
+
+        # Short answer specific changes
+        if new_comp.get("type") == "short-answer":
+            old_max_length = old_data.get("maxLength")
+            new_max_length = new_data.get("maxLength")
+            if old_max_length != new_max_length:
+                if new_max_length:
+                    changes.append(f"Set maximum length to {new_max_length}")
+                else:
+                    changes.append("Removed maximum length limit")
+
+        return changes
+
 
 # Singleton instance
 _mcp_service = None

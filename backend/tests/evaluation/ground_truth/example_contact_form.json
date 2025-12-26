@@ -1,0 +1,52 @@
+{
+  "title": "Contact Information Form",
+  "description": "Please provide your contact details",
+  "components": [
+    {
+      "id": "comp_1",
+      "type": "short-answer",
+      "data": {
+        "question": "What is your full name?",
+        "required": true
+      }
+    },
+    {
+      "id": "comp_2",
+      "type": "short-answer",
+      "data": {
+        "question": "What is your email address?",
+        "required": true
+      }
+    },
+    {
+      "id": "comp_3",
+      "type": "short-answer",
+      "data": {
+        "question": "What is your phone number?",
+        "required": false
+      }
+    },
+    {
+      "id": "comp_4",
+      "type": "multiple-choice",
+      "data": {
+        "question": "How did you hear about us?",
+        "options": [
+          "Social Media",
+          "Search Engine",
+          "Friend Referral",
+          "Advertisement"
+        ],
+        "required": false
+      }
+    },
+    {
+      "id": "comp_5",
+      "type": "short-answer",
+      "data": {
+        "question": "Any additional comments?",
+        "required": false
+      }
+    }
+  ]
+}

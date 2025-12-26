@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useDropzone } from 'react-dropzone';
-import { FormComponentFactory } from '../components/FormComponents';
+import { FormComponentFactory, QuestionEditor, InsertQuestionButton } from '../components/FormComponents';
+import FormDiffView from '../components/FormComponents/FormDiffView';
 import { getForm, editForm, saveForm, undoForm, deleteForm } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -16,13 +17,25 @@ function FormEditor() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
+  // Edit state
+  const [editedTitle, setEditedTitle] = useState('');
+  const [editedDescription, setEditedDescription] = useState('');
+  const [editedComponents, setEditedComponents] = useState([]);
+
   // AI assistant state
   const [query, setQuery] = useState('');
   const [documents, setDocuments] = useState([]);
   const [processing, setProcessing] = useState(false);
 
-  // Preview state
-  const [previewAnswers, setPreviewAnswers] = useState({});
+  // AI changes diff mode state
+  const [diffMode, setDiffMode] = useState(false);
+  const [diffData, setDiffData] = useState({
+    diff: null,
+    oldComponents: [],
+    newComponents: [],
+    oldTitle: '',
+    oldDescription: ''
+  });
 
   // Load form data
   useEffect(() => {
@@ -31,12 +44,10 @@ function FormEditor() {
         const data = await getForm(formId);
         setForm(data);
 
-        // Initialize preview answers
-        const initial = {};
-        data.schema?.components?.forEach((c) => {
-          initial[c.id] = '';
-        });
-        setPreviewAnswers(initial);
+        // Initialize edit state
+        setEditedTitle(data.title || '');
+        setEditedDescription(data.description || '');
+        setEditedComponents(data.schema?.components || []);
       } catch (err) {
         setError(err.message || 'Failed to load form');
       } finally {
@@ -88,27 +99,99 @@ function FormEditor() {
     setProcessing(true);
 
     try {
+      // Store old state before making changes
+      const oldComponents = [...editedComponents];
+      const oldTitle = editedTitle;
+      const oldDescription = editedDescription;
+
       const result = await editForm(formId, query, documents);
+
+      // Update form state
       setForm((prev) => ({
         ...prev,
         schema: result.schema,
         title: result.title || prev.title,
         description: result.description || prev.description,
       }));
+
+      // Update edit state
+      setEditedTitle(result.title || form.title);
+      setEditedDescription(result.description || form.description);
+      setEditedComponents(result.schema?.components || []);
+
       setQuery('');
       setDocuments([]);
-      setSuccess('Form updated successfully');
 
-      // Reset preview answers
-      const initial = {};
-      result.schema?.components?.forEach((c) => {
-        initial[c.id] = '';
-      });
-      setPreviewAnswers(initial);
+      // Enter diff mode if changes exist
+      if (result.diff && result.diff.changes && result.diff.changes.length > 0) {
+        setDiffMode(true);
+        setDiffData({
+          diff: result.diff,
+          oldComponents: oldComponents,
+          newComponents: result.schema?.components || [],
+          oldTitle: oldTitle,
+          oldDescription: oldDescription
+        });
+      }
+
+      setSuccess('AI changes ready for review');
     } catch (err) {
       setError(err.message || 'Failed to update form');
     } finally {
       setProcessing(false);
+    }
+  };
+
+  // Handle accepting AI changes
+  const handleAcceptChanges = () => {
+    // Simply exit diff mode - changes are already applied
+    setDiffMode(false);
+    setDiffData({
+      diff: null,
+      oldComponents: [],
+      newComponents: [],
+      oldTitle: '',
+      oldDescription: ''
+    });
+    setSuccess('Changes accepted successfully');
+  };
+
+  // Handle undoing AI changes
+  const handleUndoChanges = async () => {
+    setError('');
+    setSuccess('');
+    setSaving(true);
+
+    try {
+      const result = await undoForm(formId);
+      if (result.success) {
+        // Restore to previous state
+        setForm((prev) => ({
+          ...prev,
+          schema: result.schema,
+        }));
+        setEditedTitle(form.title);
+        setEditedDescription(form.description);
+        setEditedComponents(result.schema?.components || []);
+
+        // Exit diff mode
+        setDiffMode(false);
+        setDiffData({
+          diff: null,
+          oldComponents: [],
+          newComponents: [],
+          oldTitle: '',
+          oldDescription: ''
+        });
+
+        setSuccess('Changes reverted successfully');
+      } else {
+        setError(result.message || 'Failed to undo changes');
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to undo changes');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -125,6 +208,7 @@ function FormEditor() {
           ...prev,
           schema: result.schema,
         }));
+        setEditedComponents(result.schema?.components || []);
         setSuccess('Reverted to previous version');
       } else {
         setError(result.message || 'Cannot undo further');
@@ -143,7 +227,22 @@ function FormEditor() {
     setSaving(true);
 
     try {
-      await saveForm(formId, form.schema, 'Manual save');
+      await saveForm(
+        formId,
+        { components: editedComponents },
+        'Manual save',
+        editedTitle,
+        editedDescription
+      );
+
+      // Update form state with saved data
+      setForm(prev => ({
+        ...prev,
+        title: editedTitle,
+        description: editedDescription,
+        schema: { components: editedComponents }
+      }));
+
       setSuccess('Form saved successfully');
     } catch (err) {
       setError(err.message || 'Failed to save form');
@@ -177,6 +276,49 @@ function FormEditor() {
     }
   };
 
+  // Edit functions
+  const updateComponent = (index, updatedComponent) => {
+    const newComponents = [...editedComponents];
+    newComponents[index] = updatedComponent;
+    setEditedComponents(newComponents);
+  };
+
+  const deleteComponent = (index) => {
+    setEditedComponents(editedComponents.filter((_, i) => i !== index));
+  };
+
+  const moveComponent = (index, direction) => {
+    const newComponents = [...editedComponents];
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    [newComponents[index], newComponents[targetIndex]] = [newComponents[targetIndex], newComponents[index]];
+    setEditedComponents(newComponents);
+  };
+
+  const addQuestion = (type, insertIndex = null) => {
+    const newId = `question_${Date.now()}`;
+    const newComponent = {
+      id: newId,
+      type,
+      data: {
+        question: 'New Question',
+        required: false,
+        ...(type === 'multiple-choice'
+          ? { options: ['Option 1', 'Option 2'], allowMultiple: false }
+          : { maxLength: null })
+      }
+    };
+
+    if (insertIndex !== null) {
+      // Insert at specific position
+      const newComponents = [...editedComponents];
+      newComponents.splice(insertIndex, 0, newComponent);
+      setEditedComponents(newComponents);
+    } else {
+      // Add to end
+      setEditedComponents([...editedComponents, newComponent]);
+    }
+  };
+
   // Loading state
   if (loading) {
     return (
@@ -198,7 +340,7 @@ function FormEditor() {
               </Link>
               <span className="text-gray-300">|</span>
               <h1 className="text-lg font-medium text-gray-900 truncate max-w-xs">
-                {form?.title || 'Untitled Form'}
+                {editedTitle || 'Untitled Form'}
               </h1>
             </div>
             <div className="flex items-center space-x-3">
@@ -211,14 +353,14 @@ function FormEditor() {
               </button>
               <button
                 onClick={handleUndo}
-                disabled={saving}
+                disabled={saving || diffMode}
                 className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
               >
                 Undo
               </button>
               <button
                 onClick={handleSave}
-                disabled={saving}
+                disabled={saving || diffMode}
                 className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
               >
                 {saving ? 'Saving...' : 'Save'}
@@ -259,52 +401,101 @@ function FormEditor() {
       {/* Main content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Form Preview */}
+          {/* Form Edit */}
           <div className="lg:col-span-2">
             <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-              <h2 className="text-xl font-semibold text-gray-900">
-                {form?.title || 'Untitled Form'}
-              </h2>
-              {form?.description && (
-                <p className="mt-2 text-gray-600">{form.description}</p>
-              )}
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Form Title
+                  </label>
+                  <input
+                    type="text"
+                    value={editedTitle}
+                    onChange={(e) => setEditedTitle(e.target.value)}
+                    disabled={diffMode}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                    placeholder="Untitled Form"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Description (optional)
+                  </label>
+                  <textarea
+                    value={editedDescription}
+                    onChange={(e) => setEditedDescription(e.target.value)}
+                    disabled={diffMode}
+                    rows={2}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                    placeholder="Add a description for your form"
+                  />
+                </div>
+              </div>
             </div>
 
-            <div className="space-y-6">
-              {form?.schema?.components?.length > 0 ? (
-                form.schema.components.map((component) => (
-                  <FormComponentFactory
-                    key={component.id}
-                    component={component}
-                    value={previewAnswers[component.id]}
-                    onChange={(value) =>
-                      setPreviewAnswers((prev) => ({ ...prev, [component.id]: value }))
-                    }
-                    isEditing={true}
-                  />
-                ))
+            {/* Diff Mode View */}
+            {diffMode ? (
+              <FormDiffView
+                diff={diffData.diff}
+                oldComponents={diffData.oldComponents}
+                newComponents={diffData.newComponents}
+                onAccept={handleAcceptChanges}
+                onUndo={handleUndoChanges}
+                isProcessing={saving}
+              />
+            ) : (
+              /* Normal Edit Mode */
+              <div>
+                {editedComponents.length > 0 ? (
+                <>
+                  {/* Insert at beginning */}
+                  <InsertQuestionButton onInsert={(type) => addQuestion(type, 0)} />
+
+                  {editedComponents.map((component, index) => (
+                    <React.Fragment key={component.id}>
+                      <QuestionEditor
+                        component={component}
+                        onUpdate={(updated) => updateComponent(index, updated)}
+                        onDelete={() => deleteComponent(index)}
+                        onMoveUp={() => moveComponent(index, 'up')}
+                        onMoveDown={() => moveComponent(index, 'down')}
+                        isFirst={index === 0}
+                        isLast={index === editedComponents.length - 1}
+                      />
+                      {/* Insert after this question */}
+                      <InsertQuestionButton onInsert={(type) => addQuestion(type, index + 1)} />
+                    </React.Fragment>
+                  ))}
+                </>
               ) : (
-                <div className="bg-white rounded-lg shadow-sm p-12 text-center">
-                  <svg
-                    className="mx-auto h-12 w-12 text-gray-400"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                    />
-                  </svg>
-                  <h3 className="mt-2 text-sm font-medium text-gray-900">No questions yet</h3>
-                  <p className="mt-1 text-sm text-gray-500">
-                    Use the AI assistant to add questions to your form.
-                  </p>
-                </div>
+                <>
+                  <div className="bg-white rounded-lg shadow-sm p-12 text-center">
+                    <svg
+                      className="mx-auto h-12 w-12 text-gray-400"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                      />
+                    </svg>
+                    <h3 className="mt-2 text-sm font-medium text-gray-900">No questions yet</h3>
+                    <p className="mt-1 text-sm text-gray-500">
+                      Use the AI assistant or click below to add questions to your form.
+                    </p>
+                  </div>
+
+                  {/* Add first question */}
+                  <InsertQuestionButton onInsert={(type) => addQuestion(type, 0)} />
+                </>
               )}
-            </div>
+              </div>
+            )}
           </div>
 
           {/* AI Assistant Sidebar */}
@@ -364,10 +555,12 @@ function FormEditor() {
 
                 <button
                   type="submit"
-                  disabled={processing || (!query && documents.length === 0)}
+                  disabled={processing || (!query && documents.length === 0) || diffMode}
                   className="w-full py-2 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {processing ? (
+                  {diffMode ? (
+                    'Review changes first'
+                  ) : processing ? (
                     <span className="flex items-center justify-center">
                       <svg className="spinner -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
